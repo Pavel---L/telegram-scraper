@@ -205,3 +205,35 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Telegram Sessions
+session*
+*.session
+*.session-journal
+
+# Environment
+.env
+*.env
+!.env.example
+
+# Data
+dumped/
+*.db
+*.sqlite
+*.txt
+!requirements*.txt
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+.telegram-scraper-data/
