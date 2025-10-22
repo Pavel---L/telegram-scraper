@@ -11,6 +11,8 @@ from telethon import TelegramClient, events
 from telethon.events import NewMessage
 from telethon.tl.custom.message import Message
 from telethon.utils import get_peer_id
+from telethon.sessions import StringSession
+
 
 import psycopg2
 from psycopg2.extras import Json
@@ -57,7 +59,11 @@ def get_db_connection(database_url: str | None) -> psycopg2.extensions.connectio
 
 SESSION_BASENAME = DATA_DIR / "session"
 SESSION_FILE = Path(str(SESSION_BASENAME) + ".session")
-TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
+STRING_SESSION = os.getenv("TELEGRAM_STRING_SESSION")
+if STRING_SESSION:
+    TELEGRAM_CLIENT = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+else:
+    TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
 
 
 def read_last_id_from_file(state_file: Path) -> int:
