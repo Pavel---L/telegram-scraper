@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
-from typing import Any, Tuple, Callable
+from typing import Any, Callable, Optional
 import os
 import sys
 import json
+import time
+import base64
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,6 +13,8 @@ from telethon import TelegramClient, events
 from telethon.events import NewMessage
 from telethon.tl.custom.message import Message
 from telethon.utils import get_peer_id
+from telethon.sessions import StringSession
+
 
 import psycopg2
 from psycopg2.extras import Json
@@ -33,14 +37,15 @@ CHAT_ID: int | str = int(raw) if raw.lstrip("-").isdigit() else raw
 
 LOOKBACK_HOURS = int(os.getenv("LOOKBACK_HOURS", "24"))
 
-# Mode selection: --db flag or USE_DATABASE env var
-USE_DATABASE = (
-    "--db" in sys.argv or os.getenv("USE_DATABASE", "false").lower() == "true"
-)
-DATABASE_URL = None
-# Database connection (only if needed)
+# Mode selection: USE_DATABASE env var
+DATABASE_URL = os.getenv("DATABASE_URL")
+USE_DATABASE = bool(DATABASE_URL)
+
 if USE_DATABASE:
-    DATABASE_URL = get_required_env("DATABASE_URL")
+    print("[db] DATABASE_URL detected → database mode enabled", file=sys.stderr)
+else:
+    print("[db] DATABASE_URL not set → STDOUT mode", file=sys.stderr)
+
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "./.telegram-scraper-data"))
 STATE_DIR = DATA_DIR / "state"
@@ -56,16 +61,11 @@ def get_db_connection(database_url: str | None) -> psycopg2.extensions.connectio
 
 
 SESSION_BASENAME = DATA_DIR / "session"
-SESSION_FILE = Path(str(SESSION_BASENAME) + ".session")
-if not SESSION_FILE.exists():
-    print(
-        f"[session] Session file not found: {SESSION_FILE}\n"
-        "Create it first (e.g., run the script once interactively "
-        "to login, or mount an existing session file).",
-        file=sys.stderr,
-    )
-    sys.exit(2)
-TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
+STRING_SESSION = os.getenv("TELEGRAM_STRING_SESSION")
+if STRING_SESSION:
+    TELEGRAM_CLIENT = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+else:
+    TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
 
 
 def read_last_id_from_file(state_file: Path) -> int:
@@ -138,6 +138,121 @@ def save_last_id_conn(db_conn: Any | None, peer_id: int, msg_id: int) -> None:
         save_last_id_to_file(get_state_file(peer_id), msg_id)
 
 
+def media_to_dict(msg: Message) -> Optional[dict[str, Any]]:
+    """Return structured media info or None if no media."""
+    if not msg.media:
+        return None
+
+    media_type = msg.media.__class__.__name__
+    mime_type = getattr(msg.document, "mime_type", None) if msg.document else None
+
+    doc_attrs = getattr(msg.document, "attributes", []) if msg.document else []
+
+    def _first_attr(cls_name: str):
+        return next((a for a in doc_attrs if a.__class__.__name__ == cls_name), None)
+
+    # duration
+    duration = None
+    a_video = _first_attr("DocumentAttributeVideo")
+    a_audio = _first_attr("DocumentAttributeAudio")
+    if a_video and hasattr(a_video, "duration"):
+        duration = a_video.duration
+    elif a_audio and hasattr(a_audio, "duration"):
+        duration = a_audio.duration
+
+    # dimensions
+    width = height = None
+    if a_video:
+        width = getattr(a_video, "w", None)
+        height = getattr(a_video, "h", None)
+    elif msg.photo:
+        sizes = getattr(msg.photo, "sizes", []) or []
+        width = max((getattr(s, "w", 0) for s in sizes), default=None)
+        height = max((getattr(s, "h", 0) for s in sizes), default=None)
+
+    # file props
+    file_size = getattr(msg.document, "size", None) if msg.document else None
+    a_fname = _first_attr("DocumentAttributeFilename")
+    file_name = getattr(a_fname, "file_name", None) if a_fname else None
+
+    # flags
+    is_sticker = _first_attr("DocumentAttributeSticker") is not None
+    sticker_emoji = (
+        getattr(_first_attr("DocumentAttributeSticker"), "alt", None)
+        if is_sticker
+        else None
+    )
+    is_voice_note = bool(getattr(a_audio, "voice", False)) if a_audio else False
+    is_round_video = (
+        bool(getattr(a_video, "round_message", False)) if a_video else False
+    )
+
+    grouped_id = getattr(msg, "grouped_id", None)
+    ttl_seconds = getattr(msg.media, "ttl_seconds", None)
+    has_spoiler = getattr(msg, "has_media_spoiler", False)
+
+    # lightweight content kind
+    if mime_type and "/" in mime_type:
+        content_kind = mime_type.split("/", 1)[0]
+    else:
+        content_kind = "photo" if msg.photo else None
+
+    # --- Advanced Telethon refs (на случай удаления сообщения) ---
+    telethon_refs: dict[str, Any] | None = None
+    try:
+        if msg.document:
+            fr = getattr(msg.document, "file_reference", None)
+            telethon_refs = {
+                "document": {
+                    "id": getattr(msg.document, "id", None),
+                    "access_hash": getattr(msg.document, "access_hash", None),
+                    "file_reference_b64": base64.b64encode(fr).decode("ascii")
+                    if fr
+                    else None,
+                }
+            }
+        elif msg.photo:
+            fr = getattr(msg.photo, "file_reference", None)
+            telethon_refs = {
+                "photo": {
+                    "id": getattr(msg.photo, "id", None),
+                    "access_hash": getattr(msg.photo, "access_hash", None),
+                    "file_reference_b64": base64.b64encode(fr).decode("ascii")
+                    if fr
+                    else None,
+                }
+            }
+    except Exception as e:
+        # safe non-blocking diagnostics
+        print(
+            "[media:telethon_refs] " f"failed for msg_id={msg.id}: {e}",
+            file=sys.stderr,
+        )
+        telethon_refs = telethon_refs or None
+
+    return {
+        "type": media_type,  # e.g. MessageMediaPhoto, MessageMediaDocument
+        "mime_type": mime_type,  # e.g. image/jpeg, video/mp4, application/pdf
+        "content_kind": content_kind,  # photo|video|audio|image|application|...
+        "file": {
+            "name": file_name,
+            "size": file_size,
+        },
+        "dimensions": {"width": width, "height": height},
+        "duration_sec": duration,
+        "flags": {
+            "is_sticker": is_sticker,
+            "sticker_emoji": sticker_emoji,
+            "is_voice_note": is_voice_note,
+            "is_round_video": is_round_video,
+            "has_spoiler": has_spoiler,
+        },
+        "grouped_id": grouped_id,
+        "ttl_seconds": ttl_seconds,
+        "telethon_refs": telethon_refs,  # <-- добавлено
+    }
+
+
 def message_to_dict(peer_id: int, msg: Message) -> dict[str, Any]:
     """Convert Telegram message to dict/JSON"""
     return {
@@ -180,8 +295,7 @@ def message_to_dict(peer_id: int, msg: Message) -> dict[str, Any]:
             else None
         ),
         # Media
-        "has_media": msg.media is not None,
-        "media_type": msg.media.__class__.__name__ if msg.media else None,
+        "media": media_to_dict(msg),
         # Reactions
         "reactions": [
             {
@@ -237,10 +351,7 @@ def output_msg_to_db_reuse(
         print(f"Error saving message {msg.id}: {e}", file=sys.stderr)
 
 
-def output_msg(db_conn: Any | None, peer_id: int, message: Any) -> None:
-    if not message.text:
-        return
-
+def output_msg(db_conn: Any | None, peer_id: int, message: Message) -> None:
     msg_dict = message_to_dict(peer_id, message)
 
     if db_conn is None:
@@ -255,7 +366,7 @@ async def dump_messages(
     last_id: int,
     since: Any,
     callback: Callable[[Message], None] | None = None,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Fetch messages since last_id or lookback period"""
 
     max_id: int = last_id
@@ -330,16 +441,35 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
         raise
 
 
+# Main execution
+start_time = time.monotonic()
+db_conn = None
+
 try:
-    db_conn = None
     if USE_DATABASE:
         db_conn = get_db_connection(DATABASE_URL)
+
     TELEGRAM_CLIENT.loop.run_until_complete(main(TELEGRAM_CLIENT, db_conn, CHAT_ID))
+
 except KeyboardInterrupt:
-    print("\nShutdown gracefully", file=sys.stderr)
+    print("\n[signal] Shutdown gracefully by user", file=sys.stderr)
+
 except Exception as e:
-    print(f"Fatal error: {e}", file=sys.stderr)
+    print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
+    import traceback
+
+    traceback.print_exc(file=sys.stderr)
     sys.exit(1)
+
 finally:
+    # Cleanup database connection
     if db_conn:
-        db_conn.close()
+        try:
+            db_conn.close()
+            print("[db] Connection closed", file=sys.stderr)
+        except Exception as e:
+            print(f"[db] Error closing connection: {e}", file=sys.stderr)
+
+    # Print execution time
+    elapsed = time.monotonic() - start_time
+    print(f"[exit] Script finished in {elapsed:.1f}s", file=sys.stderr)

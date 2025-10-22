@@ -186,6 +186,76 @@ docker run --rm -v $(pwd)/.telegram-scraper-data:/app/data --env-file .env teleg
 
 ---
 
+# Generating a Telegram StringSession
+
+This project can work without a session file by using a **StringSession** stored in the `TELEGRAM_STRING_SESSION` env var.
+
+## Prerequisites
+- Get your Telegram API credentials from https://my.telegram.org/apps (`TELEGRAM_API_ID`, `TELEGRAM_API_HASH`).
+- Use the helper script `gen_string_session.py` from this repo.
+
+## Security
+> Keep your StringSession private. Anyone with it can access your account. Treat it like a password.
+
+## Interactive generation (recommended)
+
+1) Export API credentials (or type them interactively when prompted):
+```bash
+export TELEGRAM_API_ID=123456
+export TELEGRAM_API_HASH=0123456789abcdef0123456789abcdef
+```
+
+2) Run the helper script:
+```bash
+python gen_string_session.py
+```
+
+3) Follow the prompts:
+- Phone (or bot token)
+- Login code from Telegram
+- 2FA `assword` (if enabled)
+
+4) On success you will see:
+```text
+STRING_SESSION=1ApWapzMBu5g...TGvBtw=
+```
+
+5) Set the value (everything after =) in your environment:
+- **Local .env**
+```dotenv
+TELEGRAM_STRING_SESSION=1ApWapzMBu5g...TGvBtw=
+```
+
+- **Docker**
+```bash
+docker run --rm \
+    -e TELEGRAM_API_ID=$TELEGRAM_API_ID \
+    -e TELEGRAM_API_HASH=$TELEGRAM_API_HASH \
+    -e TELEGRAM_STRING_SESSION='1ApWapzMBu5g...TGvBtw=' \
+    -e TELEGRAM_CHAT_ID=-1001234567890 \
+    -v $(pwd)/.telegram-scraper-data:/app/data \
+    telegram-scraper:latest
+```
+
+- **Railway**
+  - Open your service → **Variables** → add `TELEGRAM_STRING_SESSION` with the value above.
+
+## One-liner with `.env` (optional)
+If you already have `.env` with API creds:
+```bash
+(export $(grep -v '^#' .env | xargs) && python gen_string_session.py)
+```
+
+## Verification
+On the next run, the scraper should not ask for login and will print something like:
+```text
+Scraping: <chat title> [-100... | ...]
+```
+
+If you need to revoke access, rotate/remove `TELEGRAM_STRING_SESSION` and generate a new one.
+
+---
+
 ## 🧰 Troubleshooting
 
 | Issue | Solution |
