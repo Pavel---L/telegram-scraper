@@ -55,17 +55,8 @@ def get_db_connection(database_url: str | None) -> psycopg2.extensions.connectio
     return psycopg2.connect(database_url)
 
 
-NEED_LOGIN = "--login" in sys.argv
 SESSION_BASENAME = DATA_DIR / "session"
 SESSION_FILE = Path(str(SESSION_BASENAME) + ".session")
-if not SESSION_FILE.exists():
-    print(
-        f"[session] Session file not found: {SESSION_FILE}\n"
-        "Create it first (e.g., run the script once interactively "
-        "to login, or mount an existing session file).",
-        file=sys.stderr,
-    )
-    sys.exit(2)
 TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
 
 
@@ -278,10 +269,6 @@ async def dump_messages(
 
 async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None:
     await client.start()
-
-    if NEED_LOGIN:
-        print("[session] Session created. Exiting.")
-        return
 
     # Get chat info
     chat_entity = await client.get_entity(chat_id)
