@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-from typing import Any, Tuple, Callable
+from typing import Any, Callable
 import os
 import sys
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from telethon import TelegramClient, events
 from telethon.events import NewMessage
 from telethon.tl.custom.message import Message
 from telethon.utils import get_peer_id
+from telethon.sessions import StringSession
+
 
 import psycopg2
 from psycopg2.extras import Json
@@ -25,7 +28,7 @@ def get_required_env(name: str) -> str:
 
 
 # Read config from environment
-API_ID = int(get_required_env("TELEGRAM_API_ID"))
+API_ID = get_required_env("TELEGRAM_API_ID")
 API_HASH = get_required_env("TELEGRAM_API_HASH")
 
 raw = get_required_env("TELEGRAM_CHAT_ID")
@@ -57,15 +60,11 @@ def get_db_connection(database_url: str | None) -> psycopg2.extensions.connectio
 
 SESSION_BASENAME = DATA_DIR / "session"
 SESSION_FILE = Path(str(SESSION_BASENAME) + ".session")
-if not SESSION_FILE.exists():
-    print(
-        f"[session] Session file not found: {SESSION_FILE}\n"
-        "Create it first (e.g., run the script once interactively "
-        "to login, or mount an existing session file).",
-        file=sys.stderr,
-    )
-    sys.exit(2)
-TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
+STRING_SESSION = os.getenv("TELEGRAM_STRING_SESSION")
+if STRING_SESSION:
+    TELEGRAM_CLIENT = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
+else:
+    TELEGRAM_CLIENT = TelegramClient(str(SESSION_BASENAME), API_ID, API_HASH)
 
 
 def read_last_id_from_file(state_file: Path) -> int:
@@ -237,7 +236,7 @@ def output_msg_to_db_reuse(
         print(f"Error saving message {msg.id}: {e}", file=sys.stderr)
 
 
-def output_msg(db_conn: Any | None, peer_id: int, message: Any) -> None:
+def output_msg(db_conn: Any | None, peer_id: int, message: Message) -> None:
     if not message.text:
         return
 
@@ -255,7 +254,7 @@ async def dump_messages(
     last_id: int,
     since: Any,
     callback: Callable[[Message], None] | None = None,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Fetch messages since last_id or lookback period"""
 
     max_id: int = last_id
@@ -330,16 +329,35 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
         raise
 
 
+# Main execution
+start_time = time.monotonic()
+db_conn = None
+
 try:
-    db_conn = None
     if USE_DATABASE:
         db_conn = get_db_connection(DATABASE_URL)
+
     TELEGRAM_CLIENT.loop.run_until_complete(main(TELEGRAM_CLIENT, db_conn, CHAT_ID))
+
 except KeyboardInterrupt:
-    print("\nShutdown gracefully", file=sys.stderr)
+    print("\n[signal] Shutdown gracefully by user", file=sys.stderr)
+
 except Exception as e:
-    print(f"Fatal error: {e}", file=sys.stderr)
+    print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
+    import traceback
+
+    traceback.print_exc(file=sys.stderr)
     sys.exit(1)
+
 finally:
+    # Cleanup database connection
     if db_conn:
-        db_conn.close()
+        try:
+            db_conn.close()
+            print("[db] Connection closed", file=sys.stderr)
+        except Exception as e:
+            print(f"[db] Error closing connection: {e}", file=sys.stderr)
+
+    # Print execution time
+    elapsed = time.monotonic() - start_time
+    print(f"[exit] Script finished in {elapsed:.1f}s", file=sys.stderr)
