@@ -27,7 +27,7 @@ def get_required_env(name: str) -> str:
 
 
 # Read config from environment
-API_ID = int(get_required_env("TELEGRAM_API_ID"))
+API_ID = get_required_env("TELEGRAM_API_ID")
 API_HASH = get_required_env("TELEGRAM_API_HASH")
 
 raw = get_required_env("TELEGRAM_CHAT_ID")
@@ -275,6 +275,7 @@ async def dump_messages(
 
 async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None:
     await client.start()
+    print("STRING_SESSION=", client.session.save())
 
     # Get chat info
     chat_entity = await client.get_entity(chat_id)
