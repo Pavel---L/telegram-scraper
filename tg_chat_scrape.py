@@ -275,7 +275,6 @@ async def dump_messages(
 
 async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None:
     await client.start()
-    print("STRING_SESSION=", client.session.save())
 
     # Get chat info
     chat_entity = await client.get_entity(chat_id)
@@ -342,3 +341,4 @@ except Exception as e:
 finally:
     if db_conn:
         db_conn.close()
+    print("[exit] Script has finished execution.", file=sys.stderr)
