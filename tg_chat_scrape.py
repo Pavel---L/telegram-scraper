@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Any, Tuple, Callable
+from typing import Any, Callable
 import os
 import sys
 import json
@@ -236,7 +236,7 @@ def output_msg_to_db_reuse(
         print(f"Error saving message {msg.id}: {e}", file=sys.stderr)
 
 
-def output_msg(db_conn: Any | None, peer_id: int, message: Any) -> None:
+def output_msg(db_conn: Any | None, peer_id: int, message: Message) -> None:
     if not message.text:
         return
 
@@ -254,7 +254,7 @@ async def dump_messages(
     last_id: int,
     since: Any,
     callback: Callable[[Message], None] | None = None,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """Fetch messages since last_id or lookback period"""
 
     max_id: int = last_id
