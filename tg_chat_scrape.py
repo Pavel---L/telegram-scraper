@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import time
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -357,6 +358,17 @@ finally:
             print("[db] Connection closed", file=sys.stderr)
         except Exception as e:
             print(f"[db] Error closing connection: {e}", file=sys.stderr)
+
+    # Cleanup Telegram client
+    if TELEGRAM_CLIENT.is_connected():
+        try:
+            cleanup_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(cleanup_loop)
+            cleanup_loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
+            cleanup_loop.close()
+            print("[tg] Disconnected cleanly", file=sys.stderr)
+        except Exception as e:
+            print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
     # Print execution time
     elapsed = time.monotonic() - start_time
