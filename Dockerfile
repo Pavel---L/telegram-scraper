@@ -17,7 +17,7 @@ COPY tg_chat_scrape.py .
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh && mkdir -p /app/data && chown -R scraper:scraper /app
 
-USER scraper
+#USER scraper
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD []
