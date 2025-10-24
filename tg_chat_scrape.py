@@ -4,6 +4,7 @@ from typing import Any, Tuple, Callable
 import os
 import sys
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -328,6 +329,7 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
         raise
 
 
+start_time = time.monotonic()
 try:
     db_conn = None
     if USE_DATABASE:
@@ -339,6 +341,21 @@ except Exception as e:
     print(f"Fatal error: {e}", file=sys.stderr)
     sys.exit(1)
 finally:
+    # Close DB connection if any
     if db_conn:
-        db_conn.close()
-    print("[exit] Script has finished execution.", file=sys.stderr)
+        try:
+            db_conn.close()
+            print("[db] Connection closed", file=sys.stderr)
+        except Exception as e:
+            print(f"[db] Error closing connection: {e}", file=sys.stderr)
+
+    # Disconnect Telegram client cleanly
+    if TELEGRAM_CLIENT.is_connected():
+        try:
+            TELEGRAM_CLIENT.loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
+            print("[tg] Disconnected successfully", file=sys.stderr)
+        except Exception as e:
+            print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
+
+    elapsed = time.monotonic() - start_time
+    print(f"[exit] Script finished in {elapsed:.1f}s", file=sys.stderr)
