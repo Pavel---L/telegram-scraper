@@ -356,12 +356,13 @@ finally:
 
     try:
         if TELEGRAM_CLIENT.is_connected():
-            # Создаём новый временный event loop для disconnect()
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            new_loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
-            new_loop.close()
-            print("[tg] Disconnected successfully", file=sys.stderr)
+            asyncio.run(TELEGRAM_CLIENT.disconnect())
+            print("[tg] Disconnected cleanly", file=sys.stderr)
+    except RuntimeError:
+        # asyncio.run() нельзя вызывать, если уже есть активный loop — пропускаем
+        print(
+            "[tg] Skipping graceful disconnect (loop already closed)", file=sys.stderr
+        )
     except Exception as e:
         print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
