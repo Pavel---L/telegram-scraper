@@ -4,9 +4,7 @@ from typing import Any, Tuple, Callable
 import os
 import sys
 import json
-import asyncio
 import time
-import inspect
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -347,10 +345,12 @@ except Exception as e:
     print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
     sys.exit(1)
 
+
+# Main execution
 start_time = time.monotonic()
+db_conn = None
 
 try:
-    db_conn = None
     if USE_DATABASE:
         db_conn = get_db_connection(DATABASE_URL)
 
@@ -361,9 +361,13 @@ except KeyboardInterrupt:
 
 except Exception as e:
     print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
+    import traceback
+
+    traceback.print_exc(file=sys.stderr)  # ← полезно для отладки
     sys.exit(1)
 
 finally:
+    # Cleanup database connection
     if db_conn:
         try:
             db_conn.close()
@@ -371,16 +375,16 @@ finally:
         except Exception as e:
             print(f"[db] Error closing connection: {e}", file=sys.stderr)
 
+    # Cleanup Telegram client
     try:
         if TELEGRAM_CLIENT.is_connected():
-            coro = TELEGRAM_CLIENT.disconnect()
-            if inspect.iscoroutine(coro):
-                asyncio.run(coro)
+            loop = TELEGRAM_CLIENT.loop
+            if loop and not loop.is_closed():
+                loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
                 print("[tg] Disconnected cleanly", file=sys.stderr)
-            else:
-                print("[tg] Already disconnected", file=sys.stderr)
     except Exception as e:
         print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
+    # Print execution time
     elapsed = time.monotonic() - start_time
     print(f"[exit] Script finished in {elapsed:.1f}s", file=sys.stderr)
