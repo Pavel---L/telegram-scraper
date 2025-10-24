@@ -4,8 +4,9 @@ from typing import Any, Tuple, Callable
 import os
 import sys
 import json
-import time
 import asyncio
+import time
+import inspect
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -346,6 +347,22 @@ except Exception as e:
     print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
     sys.exit(1)
 
+start_time = time.monotonic()
+
+try:
+    db_conn = None
+    if USE_DATABASE:
+        db_conn = get_db_connection(DATABASE_URL)
+
+    TELEGRAM_CLIENT.loop.run_until_complete(main(TELEGRAM_CLIENT, db_conn, CHAT_ID))
+
+except KeyboardInterrupt:
+    print("\n[signal] Shutdown gracefully by user", file=sys.stderr)
+
+except Exception as e:
+    print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
+    sys.exit(1)
+
 finally:
     if db_conn:
         try:
@@ -356,13 +373,12 @@ finally:
 
     try:
         if TELEGRAM_CLIENT.is_connected():
-            asyncio.run(TELEGRAM_CLIENT.disconnect())
-            print("[tg] Disconnected cleanly", file=sys.stderr)
-    except RuntimeError:
-        # asyncio.run() нельзя вызывать, если уже есть активный loop — пропускаем
-        print(
-            "[tg] Skipping graceful disconnect (loop already closed)", file=sys.stderr
-        )
+            coro = TELEGRAM_CLIENT.disconnect()
+            if inspect.iscoroutine(coro):
+                asyncio.run(coro)
+                print("[tg] Disconnected cleanly", file=sys.stderr)
+            else:
+                print("[tg] Already disconnected", file=sys.stderr)
     except Exception as e:
         print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
