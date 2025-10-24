@@ -329,23 +329,6 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
         raise
 
 
-start_time = time.monotonic()
-
-try:
-    db_conn = None
-    if USE_DATABASE:
-        db_conn = get_db_connection(DATABASE_URL)
-
-    TELEGRAM_CLIENT.loop.run_until_complete(main(TELEGRAM_CLIENT, db_conn, CHAT_ID))
-
-except KeyboardInterrupt:
-    print("\n[signal] Shutdown gracefully by user", file=sys.stderr)
-
-except Exception as e:
-    print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
-    sys.exit(1)
-
-
 # Main execution
 start_time = time.monotonic()
 db_conn = None
@@ -363,7 +346,7 @@ except Exception as e:
     print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
     import traceback
 
-    traceback.print_exc(file=sys.stderr)  # ← полезно для отладки
+    traceback.print_exc(file=sys.stderr)
     sys.exit(1)
 
 finally:
@@ -374,21 +357,6 @@ finally:
             print("[db] Connection closed", file=sys.stderr)
         except Exception as e:
             print(f"[db] Error closing connection: {e}", file=sys.stderr)
-
-    # Cleanup Telegram client
-    try:
-        if TELEGRAM_CLIENT.is_connected():
-            # Для Telethon: disconnect() можно вызвать синхронно через loop
-            loop = TELEGRAM_CLIENT.loop
-            if loop and not loop.is_closed():
-                # disconnect() возвращает корутину, нужен await
-                loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
-                print("[tg] Disconnected cleanly", file=sys.stderr)
-            else:
-                # Loop закрыт, просто вызываем disconnect без await
-                print("[tg] Loop closed, skipping disconnect", file=sys.stderr)
-    except Exception as e:
-        print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
     # Print execution time
     elapsed = time.monotonic() - start_time
