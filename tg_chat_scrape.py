@@ -378,10 +378,15 @@ finally:
     # Cleanup Telegram client
     try:
         if TELEGRAM_CLIENT.is_connected():
+            # Для Telethon: disconnect() можно вызвать синхронно через loop
             loop = TELEGRAM_CLIENT.loop
             if loop and not loop.is_closed():
+                # disconnect() возвращает корутину, нужен await
                 loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
                 print("[tg] Disconnected cleanly", file=sys.stderr)
+            else:
+                # Loop закрыт, просто вызываем disconnect без await
+                print("[tg] Loop closed, skipping disconnect", file=sys.stderr)
     except Exception as e:
         print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
