@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import time
+import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -330,18 +331,22 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
 
 
 start_time = time.monotonic()
+
 try:
     db_conn = None
     if USE_DATABASE:
         db_conn = get_db_connection(DATABASE_URL)
+
     TELEGRAM_CLIENT.loop.run_until_complete(main(TELEGRAM_CLIENT, db_conn, CHAT_ID))
+
 except KeyboardInterrupt:
-    print("\nShutdown gracefully", file=sys.stderr)
+    print("\n[signal] Shutdown gracefully by user", file=sys.stderr)
+
 except Exception as e:
-    print(f"Fatal error: {e}", file=sys.stderr)
+    print(f"[fatal] Unhandled exception: {e}", file=sys.stderr)
     sys.exit(1)
+
 finally:
-    # Close DB connection if any
     if db_conn:
         try:
             db_conn.close()
@@ -349,13 +354,16 @@ finally:
         except Exception as e:
             print(f"[db] Error closing connection: {e}", file=sys.stderr)
 
-    # Disconnect Telegram client cleanly
-    if TELEGRAM_CLIENT.is_connected():
-        try:
-            TELEGRAM_CLIENT.loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
+    try:
+        if TELEGRAM_CLIENT.is_connected():
+            # Создаём новый временный event loop для disconnect()
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            new_loop.run_until_complete(TELEGRAM_CLIENT.disconnect())
+            new_loop.close()
             print("[tg] Disconnected successfully", file=sys.stderr)
-        except Exception as e:
-            print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"[tg] Error disconnecting: {e}", file=sys.stderr)
 
     elapsed = time.monotonic() - start_time
     print(f"[exit] Script finished in {elapsed:.1f}s", file=sys.stderr)
