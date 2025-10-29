@@ -28,7 +28,7 @@ def get_required_env(name: str) -> str:
 
 
 # Read config from environment
-API_ID = get_required_env("TELEGRAM_API_ID")
+API_ID = int(get_required_env("TELEGRAM_API_ID"))
 API_HASH = get_required_env("TELEGRAM_API_HASH")
 
 raw = get_required_env("TELEGRAM_CHAT_ID")
@@ -37,13 +37,15 @@ CHAT_ID: int | str = int(raw) if raw.lstrip("-").isdigit() else raw
 LOOKBACK_HOURS = int(os.getenv("LOOKBACK_HOURS", "24"))
 
 # Mode selection: --db flag or USE_DATABASE env var
-USE_DATABASE = (
-    "--db" in sys.argv or os.getenv("USE_DATABASE", "false").lower() == "true"
-)
-DATABASE_URL = None
-# Database connection (only if needed)
+USE_DATABASE = ("--db" in sys.argv) or bool(os.getenv("DATABASE_URL"))
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 if USE_DATABASE:
-    DATABASE_URL = get_required_env("DATABASE_URL")
+    if not DATABASE_URL:
+        print("[db] ERROR: --db set but DATABASE_URL is missing", file=sys.stderr)
+        sys.exit(2)
+    print("[db] DATABASE_URL detected, database mode enabled", file=sys.stderr)
+
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "./.telegram-scraper-data"))
 STATE_DIR = DATA_DIR / "state"
@@ -237,9 +239,6 @@ def output_msg_to_db_reuse(
 
 
 def output_msg(db_conn: Any | None, peer_id: int, message: Message) -> None:
-    if not message.text:
-        return
-
     msg_dict = message_to_dict(peer_id, message)
 
     if db_conn is None:
