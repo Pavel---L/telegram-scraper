@@ -427,6 +427,8 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
     @client.on(events.NewMessage(chats=chat_id))
     async def handler(event: NewMessage.Event) -> None:
         msg = event.message
+        if not msg:
+            return
         if msg.id > last_printed_id[0]:
             output_msg(db_conn, peer_id, msg)
             save_last_id_conn(db_conn, peer_id, msg.id)
