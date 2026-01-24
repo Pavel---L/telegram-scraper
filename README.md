@@ -24,7 +24,7 @@ Fetches new messages incrementally and supports tail mode for real-time monitori
 
 - Python 3.12+
 - [Telethon](https://github.com/LonamiWebs/Telethon)
-- Optional: PostgreSQL (if `USE_DATABASE=true`)
+- Optional: PostgreSQL (if `DATABASE_URL` is set)
 
 Install dependencies:
 
@@ -57,8 +57,7 @@ TELEGRAM_API_HASH=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 TELEGRAM_CHAT_ID=-1001234567890
 LOOKBACK_HOURS=24
 
-# Optional database mode
-USE_DATABASE=false
+# Optional: set DATABASE_URL to enable PostgreSQL mode (auto-detected)
 DATABASE_URL=postgresql://telegram_user:telegram_pass@postgres:5432/telegram
 
 # Data storage for session and state
@@ -84,13 +83,15 @@ python tg_chat_scrape.py --reset -f
 
 ### With database (requires PostgreSQL)
 
+DB mode is enabled automatically when `DATABASE_URL` is set:
 ```bash
-python tg_chat_scrape.py --db
+export DATABASE_URL=postgresql://user:pass@localhost:5432/telegram
+python tg_chat_scrape.py
 ```
 
 Or via Docker:
 ```bash
-docker run --rm   --link telegram-postgres:postgres   --env-file .env   -v $(pwd)/.telegram-scraper-data:/app/data   telegram-scraper python /app/tg_chat_scrape.py --db
+docker run --rm   --link telegram-postgres:postgres   --env-file .env   -v $(pwd)/.telegram-scraper-data:/app/data   telegram-scraper
 ```
 
 If you use Docker networks instead of legacy `--link`:
@@ -98,7 +99,7 @@ If you use Docker networks instead of legacy `--link`:
 docker network create tgnet
 docker run -d --name telegram-postgres --network tgnet   -e POSTGRES_USER=telegram_user -e POSTGRES_PASSWORD=telegram_pass -e POSTGRES_DB=telegram postgres:16
 
-docker run --rm --network tgnet   --env-file .env   -v $(pwd)/.telegram-scraper-data:/app/data   telegram-scraper python /app/tg_chat_scrape.py --db
+docker run --rm --network tgnet   --env-file .env   -v $(pwd)/.telegram-scraper-data:/app/data   telegram-scraper
 ```
 
 ---
@@ -164,9 +165,9 @@ docker run --rm -v $(pwd)/.telegram-scraper-data:/app/data --env-file .env teleg
 1. Push repo to GitHub
 2. Connect in [Railway.app](https://railway.app/)
 3. Set environment variables from `.env.example`
-4. Command:  
+4. Command:
    ```
-   python tg_chat_scrape.py --db
+   python tg_chat_scrape.py
    ```
 5. Add PostgreSQL plugin if you use DB mode
 
