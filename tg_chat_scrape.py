@@ -133,6 +133,7 @@ def save_last_id_to_db(db_conn: Any, peer_id: int, msg_id: int) -> None:
             db_conn.commit()
     except Exception as e:
         print(f"Error saving last_id to DB: {e}", file=sys.stderr)
+        raise
 
 
 def save_last_id_conn(db_conn: Any | None, peer_id: int, msg_id: int) -> None:
@@ -353,6 +354,7 @@ def output_msg_to_db_reuse(
         )
     except Exception as e:
         print(f"Error saving message {msg.id}: {e}", file=sys.stderr)
+        raise
 
 
 def output_msg(db_conn: Any | None, peer_id: int, message: Message) -> None:
@@ -434,9 +436,12 @@ async def main(client: TelegramClient, db_conn: Any, chat_id: int | str) -> None
         if not msg:
             return
         if msg.id > last_printed_id[0]:
-            output_msg(db_conn, peer_id, msg)
-            save_last_id_conn(db_conn, peer_id, msg.id)
-            last_printed_id[0] = msg.id
+            try:
+                output_msg(db_conn, peer_id, msg)
+                save_last_id_conn(db_conn, peer_id, msg.id)
+                last_printed_id[0] = msg.id
+            except Exception as e:
+                print(f"[tail] Error processing message {msg.id}: {e}", file=sys.stderr)
 
     try:
         await client.run_until_disconnected()
