@@ -4,7 +4,7 @@ Minimalist Telegram chat scraper in Unix style.
 Fetches new messages incrementally and supports tail mode for real-time monitoring.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue)
+![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue)
 
 ---
 
@@ -22,7 +22,7 @@ Fetches new messages incrementally and supports tail mode for real-time monitori
 
 ## ⚙️ Requirements
 
-- Python 3.12+
+- Python 3.10+
 - [Telethon](https://github.com/LonamiWebs/Telethon)
 - Optional: PostgreSQL (if `DATABASE_URL` is set)
 
