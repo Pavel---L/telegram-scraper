@@ -57,7 +57,11 @@ def get_state_file(chat_id: int | str) -> Path:
 
 
 def get_db_connection(database_url: str | None) -> psycopg2.extensions.connection:
-    return psycopg2.connect(database_url)
+    conn = psycopg2.connect(database_url)
+    with conn.cursor() as cur:
+        cur.execute('SELECT 1')
+    print('[db] Connection validated', file=sys.stderr)
+    return conn
 
 
 SESSION_BASENAME = DATA_DIR / "session"
